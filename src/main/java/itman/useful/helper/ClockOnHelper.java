@@ -2,7 +2,11 @@ package itman.useful.helper;
 
 import itman.useful.helper.util.Config;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.configuration.ConfigurationException;
@@ -14,6 +18,8 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestTemplate;
 
 public class ClockOnHelper {
 	public static void main(String[] args) throws Exception {
@@ -22,8 +28,14 @@ public class ClockOnHelper {
 			String url = config.getUrl();
 			String name = config.getName();
 			String password = config.getPassword();
-
-			new ClockOnHelper().doClockOn(url, name, password);
+			String servicePoint = config.getServiceEndpoint();
+			
+			ClockOnHelper helper = new ClockOnHelper();
+			
+			if(!helper.isHoliday(servicePoint)){
+				helper.doClockOn(url, name, password);
+			}
+			
 		} catch (ConfigurationException e) {
 			e.printStackTrace();
 		}
@@ -33,7 +45,6 @@ public class ClockOnHelper {
 
 	public ClockOnHelper() throws ConfigurationException {
 		driver = new FirefoxDriver();
-		// driver = new HtmlUnitDriver();
 	}
 
 	private void clickAlert() {
@@ -115,5 +126,54 @@ public class ClockOnHelper {
 		} else {
 			targetItem.click();
 		}
+	}
+	
+	private boolean isHoliday(String serviceEndpoint) throws Exception{
+		
+		Map<String,Object> res = (Map<String,Object>)doApiCall(serviceEndpoint,Map.class);
+		
+		List<Map<String,Object>> records =(List<Map<String,Object>>)((Map<String,Object>) res.get("result")).get("records");
+		
+		
+		SimpleDateFormat sdt = new SimpleDateFormat("yyyy/M/d");
+		String today = sdt.format(new Date());
+
+		for(Map<String,Object> record : records){
+			if(record.get("date").toString().equals(today)){
+				if(record.get("isHoliday").toString().equals("是")){
+					return true;
+				}
+			}
+		}
+		
+		return false;
+	}
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	private Object doApiCall(String url, Class returnClass) throws Exception {
+		RestTemplate restTemplate = new RestTemplate();
+
+		for (int retry = 0; retry < 3; retry++) {
+			try {
+				return restTemplate.getForObject(url, returnClass);
+			} catch (HttpClientErrorException e) {
+				e.printStackTrace();
+//				sdkLogger.info("Failed to call the internal API: " + url + ". [" + e.getMessage() + "]");
+				break;
+			} catch (Exception e) {
+				e.printStackTrace();
+//				if (sdkLogger.getLevel() != null && sdkLogger.getLevel().equals(Level.DEBUG)) {
+//					sdkLogger.info("Failed to call the internal API: " + url + ". [" + retry + "]", e);
+//				} else {
+//					sdkLogger.info("Failed to call the internal API: " + url + ". [" + retry + "]");
+//				}
+
+				try {
+					Thread.sleep(60 * 1000);
+				} catch (InterruptedException e1) {
+//					sdkLogger.debug("The thread is interrupted.", e1);
+				}
+			}
+		}
+		throw new Exception("Calling internal API failed!");
 	}
 }
