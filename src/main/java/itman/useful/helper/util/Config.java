@@ -28,6 +28,10 @@ public class Config {
 		return config.getString("clockon.password");
 	}
 
+	public String getServiceEndpoint() {
+		return config.getString("clockon.holiday.servicepoint");
+	}
+
 	public String getUrl() {
 		return config.getString("clockon.url");
 	}
