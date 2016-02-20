@@ -1,5 +1,7 @@
 package itman.useful.helper.util;
 
+import itman.useful.helper.common.BrowserUsed;
+
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.PropertiesConfiguration;
@@ -20,6 +22,10 @@ public class Config {
 		config = new PropertiesConfiguration("clock-on.properties");
 	}
 
+	public BrowserUsed getBrowserUsed() {
+		return BrowserUsed.valueOf(config.getString("clockon.browser_used", "HtmlUnit"));
+	}
+
 	public String getName() {
 		return config.getString("clockon.name");
 	}
@@ -28,11 +34,11 @@ public class Config {
 		return config.getString("clockon.password");
 	}
 
-	public String getServiceEndpoint() {
-		return config.getString("clockon.holiday.servicepoint");
-	}
-
 	public String getUrl() {
 		return config.getString("clockon.url");
+	}
+
+	public boolean useHolidayCalendar() {
+		return config.getBoolean("clockon.use_holiday_calendar", false);
 	}
 }
