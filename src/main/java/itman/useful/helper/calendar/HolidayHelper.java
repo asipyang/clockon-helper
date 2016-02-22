@@ -47,6 +47,7 @@ public class HolidayHelper {
 
 		for (HolidayRecord holiday : holidays) {
 			if (today.equals(holiday.getDate()) && holiday.isHoliday()) {
+				holidayLogger.info(holiday.getHolidayCategory() + "; " + holiday.getDescription());
 				return true;
 			}
 		}

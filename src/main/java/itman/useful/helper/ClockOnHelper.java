@@ -16,6 +16,7 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.openqa.selenium.Alert;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
@@ -29,7 +30,9 @@ import com.gargoylesoftware.htmlunit.BrowserVersion;
 
 public class ClockOnHelper {
 	public static void main(String[] args) throws Exception {
-		PropertyConfigurator.configure("./clock-on.properties");
+		// configure the properties file for log4j
+		PropertyConfigurator.configure(ClassLoader.getSystemResource("clock-on.properties"));
+
 		try {
 			Config config = Config.getInstance();
 			BrowserUsed browserUsed = config.getBrowserUsed();
@@ -37,14 +40,9 @@ public class ClockOnHelper {
 			String name = config.getName();
 			String password = config.getPassword();
 
-			if (config.useHolidayCalendar()) {
-				HolidayHelper holidayHelper = new HolidayHelper();
-				if (holidayHelper.isHoliday()) {
-					LoggerUtil.getHolidayLogger().info("Today is holiday.");
-				} else {
-					ClockOnHelper helper = new ClockOnHelper(browserUsed);
-					helper.doClockOn(url, name, password);
-				}
+			HolidayHelper holidayHelper = new HolidayHelper();
+			if (config.useHolidayCalendar() && holidayHelper.isHoliday()) {
+				LoggerUtil.getHolidayLogger().info("Today is holiday.");
 			} else {
 				ClockOnHelper helper = new ClockOnHelper(browserUsed);
 				helper.doClockOn(url, name, password);
@@ -70,6 +68,29 @@ public class ClockOnHelper {
 		} else {
 			driver = new HtmlUnitDriver(BrowserVersion.FIREFOX_38, true);
 		}
+	}
+
+	private void checkClockonResult(WebDriver clockOnWindowDriver) throws InterruptedException {
+		waitForAjax(clockOnWindowDriver);
+
+		// check for success
+		WebElement element = clockOnWindowDriver.findElement(By.id("my_msg_ok"));
+		String style = element.getAttribute("style");
+		if (style.indexOf("none") < 0) {
+			clockonLogger.info("Clock on success. " + element.getText());
+			return;
+		}
+
+		// check for failed
+		element = clockOnWindowDriver.findElement(By.id("my_msg_error"));
+		style = element.getAttribute("style");
+		if (style.indexOf("none") < 0) {
+			clockonLogger.info("Clock on failed.");
+			return;
+		}
+
+		// unknown result
+		clockonLogger.info("Clock on finished.");
 	}
 
 	private Map<String, Object> checkClockonState(WebDriver clockOnWindowDriver) {
@@ -102,7 +123,7 @@ public class ClockOnHelper {
 	}
 
 	private void clickAlert() {
-		if (isAlertPresent()) {
+		if (isAlertPresent(driver)) {
 			Alert alert = driver.switchTo().alert();
 			alert.accept();
 		}
@@ -122,19 +143,21 @@ public class ClockOnHelper {
 		openClockOnPage();
 
 		// switch to the clock on window and wait 10 seconds at most for element finding.
-		WebDriver clockOnWindowDriver = driver.switchTo().window("_win68");
-		clockOnWindowDriver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
+		String parentWindow = driver.getWindowHandle();
+		driver.switchTo().window("_win68");
 
 		// select the clock-on option and submit.
-		selectClockonOption(clockOnWindowDriver);
+		selectClockonOption(driver);
 
 		// close the browser.
 		driver.close();
+		driver.switchTo().window(parentWindow);
+		driver.close();
 	}
 
-	private boolean isAlertPresent() {
+	private boolean isAlertPresent(WebDriver driver) {
 		try {
-			new WebDriverWait(driver, 15).until(ExpectedConditions.alertIsPresent());
+			new WebDriverWait(driver, 20).until(ExpectedConditions.alertIsPresent());
 		} catch (RuntimeException e) {
 			return false;
 		}
@@ -187,6 +210,8 @@ public class ClockOnHelper {
 	}
 
 	private void selectClockonOption(WebDriver clockOnWindowDriver) throws InterruptedException {
+		waitForAjax(clockOnWindowDriver);
+
 		// check the current clock on state
 		Map<String, Object> result = checkClockonState(clockOnWindowDriver);
 		Integer currentState = (Integer) result.get(STATE_KEY);
@@ -198,12 +223,29 @@ public class ClockOnHelper {
 
 				// select the option 3 and submit.
 				selectedOption.click();
+
 				clockOnWindowDriver.findElement(By.xpath("//div[@id='my_button']/div/div/input")).click();
+
+				checkClockonResult(clockOnWindowDriver);
 			} catch (NoSuchElementException e) {
 				clockonLogger.info(e.getMessage());
 			}
 		} else {
 			clockonLogger.info(result.get(MSG_KEY));
+		}
+	}
+
+	public void waitForAjax(WebDriver driver) throws InterruptedException {
+		if (driver instanceof JavascriptExecutor) {
+			JavascriptExecutor jsExecutor = ((JavascriptExecutor) driver);
+			while (true) {
+				boolean ajaxIsComplete = (Boolean) jsExecutor.executeScript("return jQuery.active == 0");
+				if (ajaxIsComplete) {
+					break;
+				} else {
+					Thread.sleep(500);
+				}
+			}
 		}
 	}
 }
