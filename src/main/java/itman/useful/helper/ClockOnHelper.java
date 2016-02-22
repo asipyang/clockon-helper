@@ -31,7 +31,11 @@ import com.gargoylesoftware.htmlunit.BrowserVersion;
 public class ClockOnHelper {
 	public static void main(String[] args) throws Exception {
 		// configure the properties file for log4j
-		PropertyConfigurator.configure(ClassLoader.getSystemResource("clock-on.properties"));
+		if (ClassLoader.getSystemResource("clock-on.properties") != null) {
+			PropertyConfigurator.configure(ClassLoader.getSystemResource("clock-on.properties"));
+		} else {
+			PropertyConfigurator.configure("clock-on.properties");
+		}
 
 		try {
 			Config config = Config.getInstance();

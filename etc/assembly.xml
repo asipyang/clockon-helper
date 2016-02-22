@@ -20,9 +20,11 @@
 			<useDefaultExcludes>false</useDefaultExcludes>
 			<excludes>
 				<exclude>**/*.properties</exclude>
+				<exclude>**/*.md</exclude>
 				<exclude>target/*.jar</exclude>
 				<exclude>**/lib/*.jar</exclude>
 				<exclude>src/**</exclude>
+				<exclude>log/**</exclude>
 			</excludes>
 		</fileSet>
 	</fileSets>
