@@ -6,8 +6,6 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import org.apache.log4j.Logger;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 public class HolidayHelper {
@@ -17,27 +15,23 @@ public class HolidayHelper {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	private Object doApiCall(String url, Class returnClass) throws Exception {
 		RestTemplate restTemplate = new RestTemplate();
+		final int RETRY = 3;
 
-		for (int retry = 0; retry < 3; retry++) {
+		for (int i = 0; i <= RETRY; i++) {
 			try {
 				return restTemplate.getForObject(url, returnClass);
-			} catch (HttpClientErrorException e) {
-				holidayLogger.info(e.getMessage());
-				break;
-			} catch (RestClientException e) {
-				holidayLogger.info(e.getMessage());
-				return null;
 			} catch (Exception e) {
-				holidayLogger.info(e.getMessage());
+				holidayLogger.info("Calling holiday API failed after waiting " + 10 * i + " seconds. Retry " + (i + 1));
+				holidayLogger.debug(e.getMessage());
 
 				try {
-					Thread.sleep(60 * 1000);
+					Thread.sleep(i * 10 * 1000);
 				} catch (InterruptedException e1) {
 					holidayLogger.debug("The thread is interrupted.", e1);
 				}
 			}
 		}
-		throw new Exception("Calling internal API failed!");
+		throw new Exception("Calling holiday API failed!");
 	}
 
 	public boolean isHoliday() throws Exception {

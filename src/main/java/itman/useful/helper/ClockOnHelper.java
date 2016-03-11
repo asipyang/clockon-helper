@@ -53,7 +53,7 @@ public class ClockOnHelper {
 			}
 
 		} catch (ConfigurationException e) {
-			e.printStackTrace();
+			LoggerUtil.getClockonLogger().error(e);
 		}
 	}
 
@@ -89,12 +89,12 @@ public class ClockOnHelper {
 		element = clockOnWindowDriver.findElement(By.id("my_msg_error"));
 		style = element.getAttribute("style");
 		if (style.indexOf("none") < 0) {
-			clockonLogger.info("Clock on failed.");
+			clockonLogger.error("Clock on failed.");
 			return;
 		}
 
 		// unknown result
-		clockonLogger.info("Clock on finished.");
+		clockonLogger.warn("Clock on finished.");
 	}
 
 	private Map<String, Object> checkClockonState(WebDriver clockOnWindowDriver) {
@@ -187,7 +187,7 @@ public class ClockOnHelper {
 		}
 
 		if (targetItem == null) {
-			throw new Exception("Can't find target element.");
+			throw new Exception("Can't find the item '今日出勤班別' in the side menu.");
 		} else {
 			if (driver instanceof HtmlUnitDriver) {
 				Thread.sleep(2000); // this is waiting for the javascript is ready.
@@ -232,7 +232,7 @@ public class ClockOnHelper {
 
 				checkClockonResult(clockOnWindowDriver);
 			} catch (NoSuchElementException e) {
-				clockonLogger.info(e.getMessage());
+				clockonLogger.warn(e.getMessage());
 			}
 		} else {
 			clockonLogger.info(result.get(MSG_KEY));
