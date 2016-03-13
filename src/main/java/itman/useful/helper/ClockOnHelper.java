@@ -8,6 +8,7 @@ import itman.useful.helper.exception.ConnectionFailedException;
 import itman.useful.helper.exception.ElementNotFoundException;
 import itman.useful.helper.exception.EndEarlyException;
 import itman.useful.helper.exception.UnexpectedException;
+import itman.useful.helper.mail.MailHelper;
 import itman.useful.helper.util.Config;
 import itman.useful.helper.util.LoggerUtil;
 
@@ -56,20 +57,27 @@ public class ClockOnHelper {
 			String name = config.getName();
 			String password = config.getPassword();
 
-			HolidayHelper holidayHelper = new HolidayHelper();
-			if (config.useHolidayCalendar() && holidayHelper.isHoliday()) {
-				LoggerUtil.getHolidayLogger().info("Today is holiday.");
-			} else {
-				ClockOnHelper helper = new ClockOnHelper(browserUsed);
-				helper.doClockOn(url, name, password);
+			if (config.useHolidayCalendar()) {
+				HolidayHelper holidayHelper = new HolidayHelper();
+				holidayHelper.checkHoliday();
 			}
+			ClockOnHelper helper = new ClockOnHelper(browserUsed);
+			helper.doClockOn(url, name, password);
 
 		} catch (ConfigurationException e) {
 			LoggerUtil.getClockonLogger().error(e);
 		} catch (UnexpectedException e) {
 			LoggerUtil.getClockonLogger().error(e);
+			new MailHelper().sendFailed(e);
 		} catch (ConnectionFailedException e) {
 			LoggerUtil.getClockonLogger().error(e);
+			new MailHelper().sendFailed(e);
+		} catch (EndEarlyException e) {
+			LoggerUtil.getClockonLogger().info(e.getMessage());
+			new MailHelper().sendEndEarly(e.getMessage());
+		} catch (Exception e) {
+			LoggerUtil.getClockonLogger().error(e);
+			new MailHelper().sendFailed(e);
 		}
 	}
 
@@ -77,6 +85,7 @@ public class ClockOnHelper {
 	final String MSG_KEY = "msg";
 	Logger clockonLogger = LoggerUtil.getClockonLogger();
 	WebDriver driver;
+	MailHelper mailHelper;
 
 	public ClockOnHelper() throws ConfigurationException {
 		this(BrowserUsed.HtmlUnit);
@@ -88,6 +97,7 @@ public class ClockOnHelper {
 		} else {
 			driver = new HtmlUnitDriver(BrowserVersion.FIREFOX_38, true);
 		}
+		mailHelper = new MailHelper();
 	}
 
 	private String checkClockonResult(WebDriver clockOnWindowDriver) throws UnexpectedException, ActionFailedException {
@@ -168,23 +178,21 @@ public class ClockOnHelper {
 
 			// select the clock-on option and submit.
 			String successMsg = selectClockonOption(driver);
-			clockonLogger.info(successMsg);
+			processSuccess(successMsg);
 
 		} catch (ConnectionFailedException e) {
-			clockonLogger.error(e.getMessage());
-			clockonLogger.debug(e);
+			processFailed(e);
 		} catch (ElementNotFoundException e) {
-			clockonLogger.error(e.getMessage());
-			clockonLogger.debug(e);
-			takeSnapshot(driver);
+			String filePath = takeSnapshot(driver);
+			processFailed(e, filePath);
 		} catch (UnexpectedException e) {
-			clockonLogger.error(e);
+			processFailed(e);
 		} catch (EndEarlyException e) {
-			clockonLogger.info(e.getMessage());
-			takeSnapshot(driver);
+			String filePath = takeSnapshot(driver);
+			processEndEarly(e, filePath);
 		} catch (ActionFailedException e) {
-			clockonLogger.error(e.getMessage());
-			takeSnapshot(driver);
+			String filePath = takeSnapshot(driver);
+			processFailed(e, filePath);
 		}
 
 		// close the browser.
@@ -252,6 +260,30 @@ public class ClockOnHelper {
 		throw new ConnectionFailedException("Failed to connect to " + url);
 	}
 
+	private void processEndEarly(Exception e) {
+		processEndEarly(e, "");
+	}
+
+	private void processEndEarly(Exception e, String filePath) {
+		clockonLogger.info(e.getMessage());
+		mailHelper.sendEndEarly(e.getMessage(), filePath);
+	}
+
+	private void processFailed(Exception e) {
+		processFailed(e, "");
+	}
+
+	private void processFailed(Exception e, String filePath) {
+		clockonLogger.error(e.getMessage());
+		clockonLogger.debug(e);
+		mailHelper.sendFailed(e, filePath);
+	}
+
+	private void processSuccess(String successMsg) {
+		clockonLogger.info(successMsg);
+		mailHelper.sendSuccess(successMsg);
+	}
+
 	private String selectClockonOption(WebDriver clockOnWindowDriver) throws ElementNotFoundException, UnexpectedException, EndEarlyException,
 			ActionFailedException {
 		waitForAjax(clockOnWindowDriver);
@@ -279,21 +311,27 @@ public class ClockOnHelper {
 		throw new EndEarlyException(result.get(MSG_KEY).toString());
 	}
 
-	private void takeSnapshot(WebDriver driver) {
+	private String takeSnapshot(WebDriver driver) {
+		String filePath = "";
 		if (driver instanceof TakesScreenshot) {
 			SimpleDateFormat sdf = new SimpleDateFormat("yy-MM-dd_HH:mm:ss");
+
 			final String SNAPSHOT_DIR = "snapshot";
 			String fileName = sdf.format(new Date()) + ".png";
+			filePath = SNAPSHOT_DIR + File.separator + fileName;
+
 			File scrFile = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
 			try {
-				FileUtils.copyFile(scrFile, new File(SNAPSHOT_DIR + File.separator + fileName));
+				FileUtils.copyFile(scrFile, new File(filePath));
 			} catch (IOException e) {
 				clockonLogger.warn("Failed to save a snapshot.", e);
 			}
 		}
+
+		return filePath;
 	}
 
-	public void waitForAjax(WebDriver driver) throws UnexpectedException {
+	private void waitForAjax(WebDriver driver) throws UnexpectedException {
 		if (driver instanceof JavascriptExecutor) {
 			JavascriptExecutor jsExecutor = ((JavascriptExecutor) driver);
 			while (true) {

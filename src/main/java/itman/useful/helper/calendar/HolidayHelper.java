@@ -1,6 +1,7 @@
 package itman.useful.helper.calendar;
 
 import itman.useful.helper.exception.ConnectionFailedException;
+import itman.useful.helper.exception.EndEarlyException;
 import itman.useful.helper.exception.UnexpectedException;
 import itman.useful.helper.util.LoggerUtil;
 
@@ -13,6 +14,19 @@ import org.springframework.web.client.RestTemplate;
 public class HolidayHelper {
 	final String HOLIDAY_CALENDAR_API = "http://data.ntpc.gov.tw/od/data/api/7B7A8FD9-2722-4F17-B515-849E00073865?$format=json&$skip=360";
 	Logger holidayLogger = LoggerUtil.getHolidayLogger();
+
+	public void checkHoliday() throws UnexpectedException, ConnectionFailedException, EndEarlyException {
+		HolidayRecord[] holidays = (HolidayRecord[]) doApiCall(HOLIDAY_CALENDAR_API, HolidayRecord[].class);
+		SimpleDateFormat sdt = new SimpleDateFormat("yyyy/M/d");
+		String today = sdt.format(new Date());
+
+		for (HolidayRecord holiday : holidays) {
+			if (today.equals(holiday.getDate()) && holiday.isHoliday()) {
+				// holidayLogger.info(holiday.getHolidayCategory() + "; " + holiday.getDescription());
+				throw new EndEarlyException(holiday.getHolidayCategory() + "; " + holiday.getDescription());
+			}
+		}
+	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	private Object doApiCall(String url, Class returnClass) throws UnexpectedException, ConnectionFailedException {
@@ -34,20 +48,5 @@ public class HolidayHelper {
 			}
 		}
 		throw new ConnectionFailedException("Failed to calling holiday API " + url);
-	}
-
-	public boolean isHoliday() throws UnexpectedException, ConnectionFailedException {
-		HolidayRecord[] holidays = (HolidayRecord[]) doApiCall(HOLIDAY_CALENDAR_API, HolidayRecord[].class);
-		SimpleDateFormat sdt = new SimpleDateFormat("yyyy/M/d");
-		String today = sdt.format(new Date());
-
-		for (HolidayRecord holiday : holidays) {
-			if (today.equals(holiday.getDate()) && holiday.isHoliday()) {
-				holidayLogger.info(holiday.getHolidayCategory() + "; " + holiday.getDescription());
-				return true;
-			}
-		}
-
-		return false;
 	}
 }
