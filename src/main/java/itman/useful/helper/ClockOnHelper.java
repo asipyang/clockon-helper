@@ -3,21 +3,33 @@ package itman.useful.helper;
 import itman.useful.helper.calendar.HolidayHelper;
 import itman.useful.helper.common.BrowserUsed;
 import itman.useful.helper.common.ClockonState;
+import itman.useful.helper.exception.ActionFailedException;
+import itman.useful.helper.exception.ConnectionFailedException;
+import itman.useful.helper.exception.ElementNotFoundException;
+import itman.useful.helper.exception.EndEarlyException;
+import itman.useful.helper.exception.UnexpectedException;
 import itman.useful.helper.util.Config;
 import itman.useful.helper.util.LoggerUtil;
 
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.openqa.selenium.Alert;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
@@ -29,7 +41,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import com.gargoylesoftware.htmlunit.BrowserVersion;
 
 public class ClockOnHelper {
-	public static void main(String[] args) throws Exception {
+	public static void main(String[] args) {
 		// configure the properties file for log4j
 		if (ClassLoader.getSystemResource("clock-on.properties") != null) {
 			PropertyConfigurator.configure(ClassLoader.getSystemResource("clock-on.properties"));
@@ -54,6 +66,10 @@ public class ClockOnHelper {
 
 		} catch (ConfigurationException e) {
 			LoggerUtil.getClockonLogger().error(e);
+		} catch (UnexpectedException e) {
+			LoggerUtil.getClockonLogger().error(e);
+		} catch (ConnectionFailedException e) {
+			LoggerUtil.getClockonLogger().error(e);
 		}
 	}
 
@@ -74,27 +90,25 @@ public class ClockOnHelper {
 		}
 	}
 
-	private void checkClockonResult(WebDriver clockOnWindowDriver) throws InterruptedException {
+	private String checkClockonResult(WebDriver clockOnWindowDriver) throws UnexpectedException, ActionFailedException {
 		waitForAjax(clockOnWindowDriver);
 
 		// check for success
 		WebElement element = clockOnWindowDriver.findElement(By.id("my_msg_ok"));
 		String style = element.getAttribute("style");
 		if (style.indexOf("none") < 0) {
-			clockonLogger.info("Clock on success. " + element.getText());
-			return;
+			return "Clock on success. " + element.getText();
 		}
 
 		// check for failed
 		element = clockOnWindowDriver.findElement(By.id("my_msg_error"));
 		style = element.getAttribute("style");
 		if (style.indexOf("none") < 0) {
-			clockonLogger.error("Clock on failed.");
-			return;
+			throw new ActionFailedException("Clock on failed. " + element.getText());
 		}
 
 		// unknown result
-		clockonLogger.warn("Clock on finished.");
+		throw new ActionFailedException("Clock on finished.");
 	}
 
 	private Map<String, Object> checkClockonState(WebDriver clockOnWindowDriver) {
@@ -133,30 +147,52 @@ public class ClockOnHelper {
 		}
 	}
 
-	public void doClockOn(String url, String name, String password) throws Exception {
+	public void doClockOn(String url, String name, String password) {
+		String parentWindow = null;
 		// wait 10 seconds at most for element finding.
 		driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
 
-		openUrl(url);
+		try {
+			openUrl(url);
 
-		login(name, password);
+			login(name, password);
 
-		// dismiss the "password is expired" alert.
-		clickAlert();
+			// dismiss the "password is expired" alert.
+			clickAlert();
 
-		openClockOnPage();
+			openClockOnPage();
 
-		// switch to the clock on window and wait 10 seconds at most for element finding.
-		String parentWindow = driver.getWindowHandle();
-		driver.switchTo().window("_win68");
+			// switch to the clock on window and wait 10 seconds at most for element finding.
+			parentWindow = driver.getWindowHandle();
+			driver.switchTo().window("_win68");
 
-		// select the clock-on option and submit.
-		selectClockonOption(driver);
+			// select the clock-on option and submit.
+			String successMsg = selectClockonOption(driver);
+			clockonLogger.info(successMsg);
+
+		} catch (ConnectionFailedException e) {
+			clockonLogger.error(e.getMessage());
+			clockonLogger.debug(e);
+		} catch (ElementNotFoundException e) {
+			clockonLogger.error(e.getMessage());
+			clockonLogger.debug(e);
+			takeSnapshot(driver);
+		} catch (UnexpectedException e) {
+			clockonLogger.error(e);
+		} catch (EndEarlyException e) {
+			clockonLogger.info(e.getMessage());
+			takeSnapshot(driver);
+		} catch (ActionFailedException e) {
+			clockonLogger.error(e.getMessage());
+			takeSnapshot(driver);
+		}
 
 		// close the browser.
 		driver.close();
-		driver.switchTo().window(parentWindow);
-		driver.close();
+		if (parentWindow != null) {
+			driver.switchTo().window(parentWindow);
+			driver.close();
+		}
 	}
 
 	private boolean isAlertPresent(WebDriver driver) {
@@ -175,7 +211,7 @@ public class ClockOnHelper {
 		driver.findElement(By.xpath("/html/body/form[@id='loginform']/table[2]/tbody/tr/td[2]/table/tbody/tr[3]/td[2]/div/a")).click();
 	}
 
-	private void openClockOnPage() throws Exception {
+	private void openClockOnPage() throws ElementNotFoundException, UnexpectedException {
 		WebElement targetItem = null;
 		List<WebElement> list = driver.findElements(By.xpath("//div[@class='ditch-tab-pane-wrap']/div/table/tbody/tr/td[2]/a"));
 
@@ -187,33 +223,37 @@ public class ClockOnHelper {
 		}
 
 		if (targetItem == null) {
-			throw new Exception("Can't find the item '今日出勤班別' in the side menu.");
+			throw new ElementNotFoundException("Can't find the item '今日出勤班別' in the side menu.");
 		} else {
 			if (driver instanceof HtmlUnitDriver) {
-				Thread.sleep(2000); // this is waiting for the javascript is ready.
+				// this is waiting for the javascript is ready.
+				try {
+					Thread.sleep(2000);
+				} catch (InterruptedException e) {
+					throw new UnexpectedException(e);
+				}
 			}
 			targetItem.click();
 		}
 	}
 
-	private void openUrl(String url) {
+	private void openUrl(String url) throws ConnectionFailedException {
 		final int RETRY = 3;
 
 		for (int i = 0; i <= RETRY; i++) {
 			try {
 				driver.get(url);
 				(new WebDriverWait(driver, 10 * i)).until(ExpectedConditions.visibilityOfElementLocated(By.id("userid_input")));
-				break;
+				return;
 			} catch (TimeoutException e) {
 				clockonLogger.info("Connect failed after waiting " + 10 * i + " seconds. Retry " + (i + 1));
-				if (i == RETRY) {
-					throw e;
-				}
 			}
 		}
+		throw new ConnectionFailedException("Failed to connect to " + url);
 	}
 
-	private void selectClockonOption(WebDriver clockOnWindowDriver) throws InterruptedException {
+	private String selectClockonOption(WebDriver clockOnWindowDriver) throws ElementNotFoundException, UnexpectedException, EndEarlyException,
+			ActionFailedException {
 		waitForAjax(clockOnWindowDriver);
 
 		// check the current clock on state
@@ -230,16 +270,30 @@ public class ClockOnHelper {
 
 				clockOnWindowDriver.findElement(By.xpath("//div[@id='my_button']/div/div/input")).click();
 
-				checkClockonResult(clockOnWindowDriver);
+				return checkClockonResult(clockOnWindowDriver);
 			} catch (NoSuchElementException e) {
-				clockonLogger.warn(e.getMessage());
+				throw new ElementNotFoundException("Can't find the options for clockon.", e);
 			}
-		} else {
-			clockonLogger.info(result.get(MSG_KEY));
+		}
+
+		throw new EndEarlyException(result.get(MSG_KEY).toString());
+	}
+
+	private void takeSnapshot(WebDriver driver) {
+		if (driver instanceof TakesScreenshot) {
+			SimpleDateFormat sdf = new SimpleDateFormat("yy-MM-dd_HH:mm:ss");
+			final String SNAPSHOT_DIR = "snapshot";
+			String fileName = sdf.format(new Date()) + ".png";
+			File scrFile = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+			try {
+				FileUtils.copyFile(scrFile, new File(SNAPSHOT_DIR + File.separator + fileName));
+			} catch (IOException e) {
+				clockonLogger.warn("Failed to save a snapshot.", e);
+			}
 		}
 	}
 
-	public void waitForAjax(WebDriver driver) throws InterruptedException {
+	public void waitForAjax(WebDriver driver) throws UnexpectedException {
 		if (driver instanceof JavascriptExecutor) {
 			JavascriptExecutor jsExecutor = ((JavascriptExecutor) driver);
 			while (true) {
@@ -247,7 +301,11 @@ public class ClockOnHelper {
 				if (ajaxIsComplete) {
 					break;
 				} else {
-					Thread.sleep(500);
+					try {
+						Thread.sleep(500);
+					} catch (InterruptedException e) {
+						throw new UnexpectedException("Unexpected error when waiting for checking ajax.", e);
+					}
 				}
 			}
 		}

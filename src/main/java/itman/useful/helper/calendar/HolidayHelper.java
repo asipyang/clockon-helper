@@ -1,5 +1,7 @@
 package itman.useful.helper.calendar;
 
+import itman.useful.helper.exception.ConnectionFailedException;
+import itman.useful.helper.exception.UnexpectedException;
 import itman.useful.helper.util.LoggerUtil;
 
 import java.text.SimpleDateFormat;
@@ -13,7 +15,7 @@ public class HolidayHelper {
 	Logger holidayLogger = LoggerUtil.getHolidayLogger();
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
-	private Object doApiCall(String url, Class returnClass) throws Exception {
+	private Object doApiCall(String url, Class returnClass) throws UnexpectedException, ConnectionFailedException {
 		RestTemplate restTemplate = new RestTemplate();
 		final int RETRY = 3;
 
@@ -27,14 +29,14 @@ public class HolidayHelper {
 				try {
 					Thread.sleep(i * 10 * 1000);
 				} catch (InterruptedException e1) {
-					holidayLogger.debug("The thread is interrupted.", e1);
+					throw new UnexpectedException("Unexpected error when waiting for calling holiday API.", e);
 				}
 			}
 		}
-		throw new Exception("Calling holiday API failed!");
+		throw new ConnectionFailedException("Failed to calling holiday API " + url);
 	}
 
-	public boolean isHoliday() throws Exception {
+	public boolean isHoliday() throws UnexpectedException, ConnectionFailedException {
 		HolidayRecord[] holidays = (HolidayRecord[]) doApiCall(HOLIDAY_CALENDAR_API, HolidayRecord[].class);
 		SimpleDateFormat sdt = new SimpleDateFormat("yyyy/M/d");
 		String today = sdt.format(new Date());
